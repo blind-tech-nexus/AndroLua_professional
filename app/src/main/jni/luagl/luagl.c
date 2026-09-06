@@ -1176,7 +1176,7 @@ static int luagl_set_data(lua_State *L)
   case GL_BYTE:
     {
       GLbyte* data = (GLbyte*)buffer;
-      luagl_to_arrayc(L, 3, data);
+      luagl_to_arrayc(L, 3, (char*)data);
       break;
     }
   case GL_UNSIGNED_BYTE:
@@ -1225,7 +1225,7 @@ static int luagl_get_data(lua_State *L)
   case GL_BYTE:
     {
       GLbyte* data = (GLbyte*)buffer;
-      luagl_push_arrayc(L, data, size);
+      luagl_push_arrayc(L, (char*)data, size);
       break;
     }
   case GL_UNSIGNED_BYTE:

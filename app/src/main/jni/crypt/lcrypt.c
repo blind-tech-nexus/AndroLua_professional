@@ -356,7 +356,7 @@ static void
 des_key(lua_State *L, uint32_t SK[32]) {
 	size_t keysz = 8;
 	//const void * key = luaL_checklstring(L, 1, &keysz);
-	const void * key = lua_gettop(L)>1 ? luaL_checklstring(L, 1, &keysz) : DK;
+	const void * key = lua_gettop(L)>1 ? (const void*)luaL_checklstring(L, 1, &keysz) : (const void*)DK;
 	if (keysz != 8) {
 		luaL_error(L, "Invalid key size %d, need 8 bytes", (int)keysz);
 	}

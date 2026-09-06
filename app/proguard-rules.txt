@@ -6,7 +6,7 @@
 -verbose
 -printmapping mapping.txt
 -optimizations !code/simplification/arithmetic,!field/,!class/merging/
--keepattributes Annotation
+-keepattributes Annotation,InnerClasses,EnclosingMethod,Signature,SourceFile,LineNumberTable,*Annotation*,Synthetic
 -keep class com.baidu.mobstat.**{*;}
 
 -keep class android.app.**{
@@ -67,3 +67,87 @@ public <fields>;
 -keep public class * extends android.preference.PreferenceActivity
 -keep public class * extends android.accessibilityservice.AccessibilityService
 
+# AndroidX & Material
+-keep class androidx.** { *; }
+-keep interface androidx.** { *; }
+-keep class com.google.android.material.** { *; }
+-keep class androidx.camera.** { *; }
+-keep class androidx.camera.lifecycle.** { *; }
+-keep class androidx.lifecycle.** { *; }
+-keep class androidx.navigation.** { *; }
+-keep class androidx.compose.** { *; }
+-keep class androidx.media3.** { *; }
+-keep class android.support.** { *; }
+
+# Kotlin
+-keep class kotlin.** { *; }
+-keep class kotlin.Metadata { *; }
+-keep class kotlinx.** { *; }
+-keep class org.jetbrains.** { *; }
+-keepattributes RuntimeVisibleAnnotations,AnnotationDefault
+-dontwarn kotlin.**
+-dontwarn kotlinx.**
+
+# Coroutines
+-keep class kotlinx.coroutines.** { *; }
+
+# OkHttp & Retrofit
+-keep class okhttp3.** { *; }
+-keep interface okhttp3.** { *; }
+-keep class okio.** { *; }
+-keep class retrofit2.** { *; }
+-keepattributes Signature, InnerClasses, EnclosingMethod
+-keepclasseswithmembers class * {
+    @retrofit2.http.* <methods>;
+}
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-dontwarn retrofit2.**
+
+# Gson / Moshi
+-keep class com.google.gson.** { *; }
+-keep class com.squareup.moshi.** { *; }
+-keep class com.squareup.moshi.kotlin.** { *; }
+-dontwarn com.google.gson.**
+-dontwarn com.squareup.moshi.**
+
+# Image loading
+-keep class coil.** { *; }
+-keep class com.bumptech.glide.** { *; }
+-keep class com.github.bumptech.glide.** { *; }
+-keep public class * implements com.bumptech.glide.module.GlideModule
+-keep class * extends com.bumptech.glide.module.AppGlideModule { *; }
+-keep public enum com.bumptech.glide.load.ImageHeaderParser$ImageType { **[] $VALUES; public *; }
+
+# Serialization
+-keep class kotlinx.serialization.** { *; }
+
+# Room
+-keep class androidx.room.** { *; }
+-keep class * extends androidx.room.RoomDatabase
+-dontwarn androidx.room.paging.**
+
+# DataStore & WorkManager & Hilt
+-keep class androidx.datastore.** { *; }
+-keep class androidx.work.** { *; }
+-keep class androidx.hilt.** { *; }
+-keep class dagger.hilt.** { *; }
+-keep class javax.inject.** { *; }
+-keep class * extends dagger.hilt.android.HiltAndroidApp
+
+# ML Kit
+-keep class com.google.mlkit.** { *; }
+-keep class com.google.android.gms.** { *; }
+-dontwarn com.google.mlkit.**
+
+# Keep LuaJava reflective access - do not obfuscate any class that may be accessed via Lua
+-keep class * { *; }
+-keepclassmembers class * {
+    public *;
+    protected *;
+}
+
+# Keep native method names
+-keepclasseswithmembernames class * {
+    native <methods>;
+}

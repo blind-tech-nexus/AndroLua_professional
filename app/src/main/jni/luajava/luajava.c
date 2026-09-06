@@ -106,6 +106,7 @@ static jmethodID string_getbytes_method = NULL;
 static jmethodID class_getname_method = NULL;
 static jmethodID object_equals_method = NULL;
 static jmethodID java_gc_method = NULL;
+static jmethodID import_class_method = NULL;
 
 static int objectIndex(lua_State *L);
 
@@ -132,6 +133,8 @@ static int asTable(lua_State *L);
 static int javaToString(lua_State *L);
 
 static int javaObjectLength(lua_State *L);
+
+static int importClass(lua_State *L);
 
 static int coding(lua_State *L);
 
@@ -351,6 +354,10 @@ static void init(JNIEnv *javaEnv, lua_State *L) {
         bind_class_method = (*javaEnv)->GetStaticMethodID(
                 javaEnv, luajava_api_class, "javaBindClass",
                 "(Ljava/lang/String;)Ljava/lang/Class;");
+    if (import_class_method == NULL)
+        import_class_method = (*javaEnv)->GetStaticMethodID(
+                javaEnv, luajava_api_class, "importClass",
+                "(JLjava/lang/String;)I");
     if (create_proxy_method == NULL)
         create_proxy_method = (*javaEnv)->GetStaticMethodID(
                 javaEnv, luajava_api_class, "createProxy", "(JLjava/lang/String;)I");
@@ -775,6 +782,28 @@ int javaBindClass(lua_State *L) {
     pushJavaObject(L, classInstance);
     (*javaEnv)->DeleteLocalRef(javaEnv, classInstance);
     return 1;
+}
+
+int importClass(lua_State *L) {
+    int top;
+    const char *className;
+    jstring javaClassName;
+    jint ret;
+    jlong stateIndex;
+    JNIEnv *javaEnv;
+
+    top = lua_gettop(L);
+    if (top != 1) {
+        luaL_error(L, "Error. Function import received %d arguments, expected 1.", top);
+    }
+    stateIndex = checkIndex(L);
+    className = luaL_checkstring(L, 1);
+    javaEnv = checkEnv(L);
+    javaClassName = (*javaEnv)->NewStringUTF(javaEnv, className);
+    ret = (*javaEnv)->CallStaticIntMethod(javaEnv, luajava_api_class, import_class_method, stateIndex, javaClassName);
+    (*javaEnv)->DeleteLocalRef(javaEnv, javaClassName);
+    checkError(javaEnv, L);
+    return ret;
 }
 
 /***************************************************************************
@@ -1432,6 +1461,7 @@ static void set_info(lua_State *L) {
 }
 
 static const luaL_Reg ljlib[] = {{"bindClass",   javaBindClass},
+                                 {"import",      importClass},
                                  {"new",         javaNew},
                                  {"newInstance", javaNewInstance},
                                  {"loadLib",     javaLoadLib},
@@ -2274,11 +2304,11 @@ JNIEXPORT void JNICALL
 Java_com_luajava_LuaState__1pushLString(
         JNIEnv *env, jobject jobj, jlong cptr, jbyteArray bytes, jint n) {
     lua_State *L = getStateFromCPtr(env, cptr);
-    char *cBytes;
+    jbyte *cBytes;
 
-    cBytes = (char *) (*env)->GetByteArrayElements(env, bytes, NULL);
+    cBytes = (*env)->GetByteArrayElements(env, bytes, NULL);
 
-    lua_pushlstring(L, cBytes, n);
+    lua_pushlstring(L, (const char *)cBytes, n);
 
     (*env)->ReleaseByteArrayElements(env, bytes, cBytes, 0);
 }

@@ -701,17 +701,29 @@ public class LuaObject implements Serializable {
 	 */
 	public Object createProxy(String implem) throws ClassNotFoundException, LuaException {
 		synchronized (L) {
-			if (!isTable())
-				throw new LuaException("Invalid Object. Must be Table.");
+			if (!isTable() && !isFunction())
+				throw new LuaException("Invalid Object. Must be Table or Function.");
 
 			StringTokenizer st = new StringTokenizer(implem, ",");
 			Class[] interfaces = new Class[st.countTokens()];
-			for (int i = 0; st.hasMoreTokens(); i++)
-				interfaces[i] = Class.forName(st.nextToken());
-
+			int idx=0;
+			for (int i = 0; st.hasMoreTokens(); i++) {
+				String name = st.nextToken().trim();
+				try {
+					interfaces[idx++] = LuaJavaAPI.javaBindClass(name);
+				} catch (LuaException e) {
+					throw new ClassNotFoundException(name, e);
+				}
+			}
 			InvocationHandler handler = new LuaInvocationHandler(this);
-
-			return Proxy.newProxyInstance(this.getClass().getClassLoader(), interfaces, handler);
+			ClassLoader cl = interfaces.length>0 ? interfaces[0].getClassLoader() : Thread.currentThread().getContextClassLoader();
+			if (cl == null) cl = this.getClass().getClassLoader();
+			try {
+				return Proxy.newProxyInstance(cl, interfaces, handler);
+			} catch (Exception e) {
+				ClassLoader fallback = LuaJavaAPI.class.getClassLoader();
+				return Proxy.newProxyInstance(fallback, interfaces, handler);
+			}
 		}
 	}
 
@@ -720,16 +732,24 @@ public class LuaObject implements Serializable {
 			if (!isTable() && !isFunction())
 				throw new LuaException("Invalid Object. Must be Table or Function.");
 
-			if(isFunction() && implem.getMethods().length!=1)
-				throw new LuaException("Invalid Object. Must be a interface Method of Function.");
-            if(isTable()&&getTable().isList()){
-	            throw new LuaException("Invalid Object. Must be Table is Not Array.");
-            }
+			if(isFunction()) {
+				int samCount = 0;
+				for (java.lang.reflect.Method m : implem.getMethods()) {
+					if (java.lang.reflect.Modifier.isAbstract(m.getModifiers())) samCount++;
+				}
+				if (samCount != 1 && implem.getMethods().length!=1) {
+					boolean isFunc = false;
+					try { isFunc = implem.isAnnotationPresent(kotlin.Metadata.class) || implem.getName().startsWith("kotlin.jvm.functions."); } catch(Exception ignored){}
+					if (!isFunc && samCount !=1) throw new LuaException("Invalid Object. Must be a interface Method of Function.");
+				}
+			}
 			Class[] interfaces = new Class[]{implem};
 
 			InvocationHandler handler = new LuaInvocationHandler(this);
-
-			return Proxy.newProxyInstance(implem.getClassLoader(), interfaces, handler);
+			ClassLoader cl = implem.getClassLoader();
+			if (cl == null) cl = Thread.currentThread().getContextClassLoader();
+			if (cl == null) cl = LuaJavaAPI.class.getClassLoader();
+			return Proxy.newProxyInstance(cl, interfaces, handler);
 		}
 	}
 

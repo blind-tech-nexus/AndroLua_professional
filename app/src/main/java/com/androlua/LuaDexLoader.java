@@ -43,8 +43,27 @@ public class LuaDexLoader {
     }
 
     public ArrayList<ClassLoader> getClassLoaders() {
-        // TODO: Implement this method
-        return dexList;
+        ArrayList<ClassLoader> all = new ArrayList<>();
+        // Include dex list first (user supplied dex/jar)
+        for (ClassLoader c : dexList) {
+            if (c != null && !all.contains(c)) all.add(c);
+        }
+        // Include app and system loaders for androidx/kotlin/okhttp/camerax/media3 etc.
+        try {
+            ClassLoader appLoader = mContext.getContext().getClassLoader();
+            if (appLoader != null && !all.contains(appLoader)) all.add(appLoader);
+            ClassLoader ctxLoader = getClass().getClassLoader();
+            if (ctxLoader != null && !all.contains(ctxLoader)) all.add(ctxLoader);
+            ClassLoader sys = ClassLoader.getSystemClassLoader();
+            if (sys != null && !all.contains(sys)) all.add(sys);
+            ClassLoader thread = Thread.currentThread().getContextClassLoader();
+            if (thread != null && !all.contains(thread)) all.add(thread);
+            ClassLoader luaApi = com.luajava.LuaJavaAPI.class.getClassLoader();
+            if (luaApi != null && !all.contains(luaApi)) all.add(luaApi);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return all;
     }
 
     public LuaDexClassLoader loadApp(String pkg) {
