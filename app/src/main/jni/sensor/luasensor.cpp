@@ -62,8 +62,12 @@ public:
 
   const ASensor* accelerometerSensor;
   SensorClass() : nCallback(0) {
-    // Get singleton SensorManager
+    // Get singleton SensorManager - use modern API when available
+#if __ANDROID_API__ >= 26
+    manager = ASensorManager_getInstanceForPackage("com.androlua");
+#else
     manager = ASensorManager_getInstance();
+#endif
     // List and number of available sensors
     nList = ASensorManager_getSensorList(manager, &list);
 

@@ -52,6 +52,13 @@ public class LuaInvocationHandler implements InvocationHandler {
 	public Object invoke(Object proxy, Method method, Object[] args) throws LuaException {
 		synchronized (obj.L) {
 			String methodName = method.getName();
+			if (method.getDeclaringClass() == Object.class) {
+				switch (methodName) {
+					case "toString": return "LuaProxy@" + System.identityHashCode(proxy) + "[" + obj + "]";
+					case "hashCode": return System.identityHashCode(proxy);
+					case "equals": return proxy == args[0];
+				}
+			}
 			LuaObject func;
 			if (obj.isFunction()){
 				func = obj;
@@ -62,6 +69,9 @@ public class LuaInvocationHandler implements InvocationHandler {
 			Class<?> retType = method.getReturnType();
 
 			if (func.isNil()) {
+				if (!java.lang.reflect.Modifier.isAbstract(method.getModifiers())) {
+					try { return method.invoke(proxy, args); } catch (Throwable ignored) {}
+				}
 				if (retType.equals(boolean.class) || retType.equals(Boolean.class))
 					return false;
 				else if (retType.isPrimitive() || Number.class.isAssignableFrom(retType))
@@ -72,7 +82,6 @@ public class LuaInvocationHandler implements InvocationHandler {
 
 			Object ret = null;
 			try {
-				// Checks if returned type is void. if it is returns null.
 				if (retType.equals(Void.class) || retType.equals(void.class)) {
 					func.call(args);
 					ret = null;
@@ -81,11 +90,14 @@ public class LuaInvocationHandler implements InvocationHandler {
 					ret = func.call(args);
 					if (ret != null && ret instanceof Double) {
 						ret = LuaState.convertLuaNumber((Double) ret, retType);
+					} else if (ret != null && retType == String.class && !(ret instanceof String)) {
+						ret = String.valueOf(ret);
 					}
 				}
 			}
 			catch (LuaException e) {
-				mContext.sendError(methodName, e);
+				if (mContext != null) mContext.sendError(methodName, e);
+				else e.printStackTrace();
 			}  	
 			if (ret == null)
 				if (retType.equals(boolean.class) || retType.equals(Boolean.class))

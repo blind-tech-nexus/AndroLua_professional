@@ -82,8 +82,19 @@ public class LuaApplication extends Application implements LuaContext {
 
     @Override
     public ArrayList<ClassLoader> getClassLoaders() {
-        // TODO: Implement this method
-        return null;
+        ArrayList<ClassLoader> list = new ArrayList<>();
+        try {
+            list.add(getClassLoader());
+            ClassLoader ctx = getClass().getClassLoader();
+            if (ctx != null && !list.contains(ctx)) list.add(ctx);
+            ClassLoader sys = ClassLoader.getSystemClassLoader();
+            if (sys != null && !list.contains(sys)) list.add(sys);
+            ClassLoader thread = Thread.currentThread().getContextClassLoader();
+            if (thread != null && !list.contains(thread)) list.add(thread);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return list;
     }
 
     @Override
@@ -93,8 +104,8 @@ public class LuaApplication extends Application implements LuaContext {
 
     @Override
     public String getLuaPath() {
-        // TODO: Implement this method
-        return null;
+        if (luaLpath != null) return luaLpath;
+        return localDir + "/?.lua;" + localDir + "/lua/?.lua;" + localDir + "/?/init.lua;";
     }
 
     @Override
@@ -158,8 +169,20 @@ public class LuaApplication extends Application implements LuaContext {
         // 注册crashHandler
         crashHandler.init(getApplicationContext());
         mSharedPreferences = getSharedPreferences(this);
-        //初始化AndroLua工作目录
-        if (Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) {
+        //初始化AndroLua工作目录 - support modern scoped storage (Android 10+)
+        File extFiles = getExternalFilesDir(null);
+        if (extFiles != null && Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) {
+            // Prefer app-specific external dir for Android 10+ compliance, fallback to legacy /AndroLua for compatibility
+            luaExtDir = new File(Environment.getExternalStorageDirectory(), "AndroLua").getAbsolutePath();
+            // Ensure legacy path exists for migration, but keep scoped path as alternative
+            File legacy = new File(luaExtDir);
+            if (!legacy.exists()) {
+                // Try app-specific as primary if legacy not present and Android 11+
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    luaExtDir = new File(extFiles, "AndroLua").getAbsolutePath();
+                }
+            }
+        } else if (Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) {
             String sdDir = Environment.getExternalStorageDirectory().getAbsolutePath();
             luaExtDir = sdDir + "/AndroLua";
         } else {

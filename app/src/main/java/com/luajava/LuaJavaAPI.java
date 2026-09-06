@@ -571,41 +571,155 @@ public final class LuaJavaAPI {
         }
     }
 
+    // Modernized class loading that supports androidx, kotlin, CameraX, OkHttp, etc.
     public static Class javaBindClass(String className) throws LuaException {
-        Class clazz;
-        try {
-            clazz = Class.forName(className);
-        } catch (Exception e) {
-            switch (className) {
-                case "boolean":
-                    clazz = Boolean.TYPE;
-                    break;
-                case "byte":
-                    clazz = Byte.TYPE;
-                    break;
-                case "char":
-                    clazz = Character.TYPE;
-                    break;
-                case "short":
-                    clazz = Short.TYPE;
-                    break;
-                case "int":
-                    clazz = Integer.TYPE;
-                    break;
-                case "long":
-                    clazz = Long.TYPE;
-                    break;
-                case "float":
-                    clazz = Float.TYPE;
-                    break;
-                case "double":
-                    clazz = Double.TYPE;
-                    break;
-                default:
-                    throw new LuaException("Class not found: " + className);
+        // Handle primitive types quickly
+        switch (className) {
+            case "boolean": return Boolean.TYPE;
+            case "byte": return Byte.TYPE;
+            case "char": return Character.TYPE;
+            case "short": return Short.TYPE;
+            case "int": return Integer.TYPE;
+            case "long": return Long.TYPE;
+            case "float": return Float.TYPE;
+            case "double": return Double.TYPE;
+            case "void": return Void.TYPE;
+        }
+
+        // Handle array notation like "java.lang.String[]" or "int[][]"
+        if (className.endsWith("[]")) {
+            int dims = 0;
+            String base = className;
+            while (base.endsWith("[]")) {
+                dims++;
+                base = base.substring(0, base.length() - 2);
+            }
+            Class baseClazz = javaBindClass(base);
+            int[] d = new int[dims];
+            // create zero-length array to get Class object
+            Object arr = java.lang.reflect.Array.newInstance(baseClazz, d);
+            return arr.getClass();
+        }
+
+        // Handle legacy support library alias -> AndroidX
+        String original = className;
+        if (className.startsWith("android.support.")) {
+            String mapped = className
+                .replace("android.support.v4.app.Fragment", "androidx.fragment.app.Fragment")
+                .replace("android.support.v4.app", "androidx.fragment.app")
+                .replace("android.support.v7.app", "androidx.appcompat.app")
+                .replace("android.support.annotation", "androidx.annotation")
+                .replace("android.support.v7.widget", "androidx.recyclerview.widget")
+                .replace("android.support.design.widget", "com.google.android.material")
+                .replace("android.support.v4.widget.DrawerLayout", "androidx.drawerlayout.widget.DrawerLayout")
+                .replace("android.support.v4.view.ViewPager", "androidx.viewpager.widget.ViewPager")
+                .replace("android.support.v4", "androidx.core")
+                .replace("android.support", "androidx");
+            if (!mapped.equals(className)) {
+                Class c2 = tryLoadClass(mapped);
+                if (c2 != null) return c2;
             }
         }
-        return clazz;
+        // Handler for inner class dotted notation vs $ - try both
+        String[] candidates = new String[]{className, className.replace(".", "$").replaceFirst("\\$",".")};
+        for (String cand : candidates) {
+            Class c = tryLoadClass(cand);
+            if (c != null) return c;
+        }
+        // Try Kotlin style nested class: Companion, etc. will be handled via tryLoadClass
+        throw new LuaException("Class not found: " + className);
+    }
+
+    private static Class tryLoadClass(String name) {
+        ClassLoader[] loaders = null;
+        try {
+            // Gather classloaders from current LuaState context if available
+            LuaState cur = null;
+            try { cur = LuaStateFactory.getExistingState(0); } catch (Exception ignored) {}
+            java.util.ArrayList<ClassLoader> list = new java.util.ArrayList<>();
+            ClassLoader ctxCl = Thread.currentThread().getContextClassLoader();
+            if (ctxCl != null) list.add(ctxCl);
+            ClassLoader apiCl = LuaJavaAPI.class.getClassLoader();
+            if (apiCl != null) list.add(apiCl);
+            ClassLoader sysCl = ClassLoader.getSystemClassLoader();
+            if (sysCl != null) list.add(sysCl);
+            // Add LuaContext classloaders if available
+            try {
+                com.androlua.LuaApplication app = com.androlua.LuaApplication.getInstance();
+                if (app != null) {
+                    ClassLoader appCl = app.getClassLoader();
+                    if (appCl != null) list.add(appCl);
+                    java.util.ArrayList<ClassLoader> extra = app.getClassLoaders();
+                    if (extra != null) for (ClassLoader cl : extra) if (cl != null) list.add(cl);
+                }
+            } catch (Exception ignored) {}
+            if (cur != null && cur.getContext() != null) {
+                try {
+                    java.util.ArrayList<ClassLoader> extra2 = cur.getContext().getClassLoaders();
+                    if (extra2 != null) for (ClassLoader cl : extra2) if (cl != null) list.add(cl);
+                } catch (Exception ignored) {}
+                try {
+                    ClassLoader cCl = cur.getContext().getContext().getClassLoader();
+                    if (cCl != null) list.add(cCl);
+                } catch (Exception ignored) {}
+            }
+            loaders = list.toArray(new ClassLoader[0]);
+        } catch (Exception e) {
+            loaders = new ClassLoader[]{LuaJavaAPI.class.getClassLoader(), Thread.currentThread().getContextClassLoader()};
+        }
+        for (ClassLoader cl : loaders) {
+            if (cl == null) continue;
+            try {
+                return Class.forName(name, true, cl);
+            } catch (ClassNotFoundException ignored) {}
+            // Try with dex class loader fallback via loadClass
+            try {
+                return cl.loadClass(name);
+            } catch (Exception ignored) {}
+        }
+        // Last resort: bare Class.forName
+        try { return Class.forName(name); } catch (Exception ignored) {}
+        return null;
+    }
+
+    // Helper exposed to Lua: import("androidx.camera.core.ImageCapture") etc. tries common prefixes
+    public static int importClass(long luaState, String className) throws LuaException {
+        LuaState L = LuaStateFactory.getExistingState(luaState);
+        synchronized (L) {
+            // If className already contains dot, directly bind
+            if (className.contains(".")) {
+                Class c = javaBindClass(className);
+                L.pushJavaObject(c);
+                return 1;
+            }
+            // Try common prefixes for shorthand import
+            String[] prefixes = new String[]{
+                "java.lang.", "java.util.", "java.io.", 
+                "android.", "androidx.", "androidx.core.", "androidx.appcompat.", "androidx.lifecycle.",
+                "androidx.camera.", "androidx.camera.core.", "androidx.camera.lifecycle.",
+                "androidx.recyclerview.widget.", "com.google.android.material.",
+                "okhttp3.", "retrofit2.", "com.google.gson.", "coil.", "com.bumptech.glide.",
+                "kotlin.", "kotlin.collections.", "kotlinx.coroutines.", "org.jetbrains.",
+                "com.androlua.", "com.luajava."
+            };
+            for (String pre : prefixes) {
+                try {
+                    Class c = javaBindClass(pre + className);
+                    L.pushJavaObject(c);
+                    return 1;
+                } catch (LuaException ignored) {}
+            }
+            throw new LuaException("Class not found (import): " + className);
+        }
+    }
+
+    // Support Kotlin-friendly method resolution: handles suspend functions and default params
+    private static boolean isKotlinSuspendMethod(Method m) {
+        Class<?>[] pts = m.getParameterTypes();
+        if (pts.length == 0) return false;
+        // suspend functions have last param = kotlin.coroutines.Continuation
+        Class<?> last = pts[pts.length-1];
+        return last.getName().equals("kotlin.coroutines.Continuation");
     }
 
     /**
@@ -819,8 +933,8 @@ public final class LuaJavaAPI {
         synchronized (L) {
             Class<?> clazz;
             try {
-                clazz = Class.forName(className);
-            } catch (ClassNotFoundException e) {
+                clazz = javaBindClass(className);
+            } catch (LuaException e) {
                 throw new LuaException(e);
             }
 

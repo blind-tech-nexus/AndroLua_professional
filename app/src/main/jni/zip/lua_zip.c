@@ -6,15 +6,21 @@
 #include <string.h>
 
 #if LUA_VERSION_NUM > 501
+#ifndef lua_objlen
 #define lua_objlen lua_rawlen
 #endif
-
-#if LUA_VERSION_NUM > 501
-#define lua_equal(L, idx1, idx2) lua_compare((L), (idx1), (idx2), LUA_OPEQ)
 #endif
 
 #if LUA_VERSION_NUM > 501
+#ifndef lua_equal
+#define lua_equal(L, idx1, idx2) lua_compare((L), (idx1), (idx2), LUA_OPEQ)
+#endif
+#endif
+
+#if LUA_VERSION_NUM > 501
+#ifndef luaL_register
 #define luaL_register(L,_,funcs) luaL_setfuncs((L),funcs,0)
+#endif
 #endif
 
 #define ARCHIVE_MT      "zip{archive}"
