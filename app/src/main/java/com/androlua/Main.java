@@ -11,6 +11,7 @@ public class Main extends LuaActivity
 	public void onCreate(Bundle savedInstanceState) {
 		// TODO: Implement this method
 		super.onCreate(savedInstanceState);
+		setTitle(R.string.app_name);
 		if(savedInstanceState==null && getIntent().getData()!=null)
 			runFunc("onNewIntent", getIntent());
 		if(getIntent().getBooleanExtra("isVersionChanged",false) && (savedInstanceState==null)){

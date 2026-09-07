@@ -46,7 +46,7 @@
     <application
         android:name="com.androlua.LuaApplication"
         android:icon="@drawable/icon"
-        android:label="AndroLua+"
+        android:label="@string/app_name"
         android:largeHeap="true"
         android:persistent="true"
         android:resizeableActivity="true"
@@ -62,7 +62,7 @@
             android:name="com.androlua.Main"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="true"
-            android:label="AndroLua+"
+            android:label="@string/app_name"
             android:launchMode="singleTask"
             android:theme="@style/app_theme">
             <intent-filter>
@@ -124,7 +124,7 @@
             android:name="com.androlua.LuaActivity"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="true"
-            android:label="AndroLua+"
+            android:label="@string/app_name"
             android:theme="@style/app_theme"
             tools:targetApi="lollipop">
             <intent-filter>
@@ -188,14 +188,14 @@
             android:documentLaunchMode="intoExisting"
             android:excludeFromRecents="false"
             android:exported="false"
-            android:label="AndroLua+"
+            android:label="@string/app_name"
             android:screenOrientation="portrait"
             android:theme="@style/app_theme"
             tools:targetApi="lollipop" />
         <activity
             android:name="com.androlua.Welcome"
             android:exported="true"
-            android:label="AndroLua+"
+            android:label="@string/app_name"
             android:screenOrientation="portrait"
             android:theme="@style/app_theme">
             <intent-filter>
@@ -215,7 +215,7 @@
             android:name="com.androlua.LuaAccessibilityService"
             android:enabled="true"
             android:exported="true"
-            android:label="AndroLua+"
+            android:label="@string/app_name"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <meta-data
                 android:name="android.accessibilityservice"
