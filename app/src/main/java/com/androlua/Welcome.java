@@ -8,10 +8,10 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.content.pm.PermissionInfo;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
 import android.support.annotation.NonNull;
 import android.view.Gravity;
 import android.widget.TextView;
@@ -26,11 +26,15 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Enumeration;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 
 public class Welcome extends Activity {
+
+    private static final int REQUEST_RUNTIME_PERMISSIONS = 1001;
 
     private boolean isUpdata;
 
@@ -59,7 +63,7 @@ public class Welcome extends Activity {
 
         super.onCreate(savedInstanceState);
         TextView view = new TextView(this);
-        view.setText(new String(new char[]{'P', 'o', 'w', 'e', 'r', 'e', 'd', ' ', 'b', 'y', ' ', 'A', 'n', 'd', 'o', 'L', 'u', 'a', '+'}));
+        view.setText(new String(new char[]{'P', 'o', 'w', 'e', 'r', 'e', 'd', ' ', 'b', 'y', ' ', 'A', 'n', 'd', 'r', 'o', 'L', 'u', 'a'}));
         view.setTextColor(0xff888888);
         view.setGravity(Gravity.TOP);
         setContentView(view);
@@ -75,21 +79,16 @@ public class Welcome extends Activity {
         if (checkInfo()) {
             if (Build.VERSION.SDK_INT >= 23) {
                 try {
-                    permissions = new ArrayList<String>();
-                    String[] ps2 = getPackageManager().getPackageInfo(getPackageName(), PackageManager.GET_PERMISSIONS).requestedPermissions;
-                    for (String p : ps2) {
+                    permissions = collectRuntimePermissions();
+                    if (!permissions.isEmpty()) {
+                        String[] ps = permissions.toArray(new String[0]);
                         try {
-                            checkPermission(p);
-                        } catch (Exception e) {
+                            requestPermissions(ps, REQUEST_RUNTIME_PERMISSIONS);
+                            return;
+                        } catch (RuntimeException e) {
+                            // A malformed/unsupported permission must never prevent the app from starting.
                             e.printStackTrace();
                         }
-                    }
-                    if (!permissions.isEmpty()) {
-                        String[] ps = new String[permissions.size()];
-                        permissions.toArray(ps);
-                        requestPermissions(ps,
-                                0);
-                        return;
                     }
                 } catch (Exception e) {
                     e.printStackTrace();
@@ -101,28 +100,56 @@ public class Welcome extends Activity {
         }
     }
 
-    private void checkPermission(String permission) {
-        if (checkCallingOrSelfPermission(permission)
-                != PackageManager.PERMISSION_GRANTED) {
-            permissions.add(permission);
+    private ArrayList<String> collectRuntimePermissions() {
+        Set<String> result = new LinkedHashSet<String>();
+        try {
+            PackageInfo info = getPackageManager().getPackageInfo(
+                    getPackageName(), PackageManager.GET_PERMISSIONS);
+            String[] requested = info.requestedPermissions;
+            if (requested == null)
+                return new ArrayList<String>(result);
+
+            for (String permission : requested) {
+                if (permission == null || !isRuntimePermission(permission))
+                    continue;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+                        && "android.permission.WRITE_EXTERNAL_STORAGE".equals(permission))
+                    continue;
+                if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED)
+                    result.add(permission);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return new ArrayList<String>(result);
+    }
+
+    private boolean isRuntimePermission(String permission) {
+        try {
+            PermissionInfo info = getPackageManager().getPermissionInfo(permission, 0);
+            int protection = info.protectionLevel & PermissionInfo.PROTECTION_MASK_BASE;
+            return protection == PermissionInfo.PROTECTION_DANGEROUS;
+        } catch (PackageManager.NameNotFoundException e) {
+            return false;
         }
     }
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        new UpdateTask().execute();
+        if (requestCode == REQUEST_RUNTIME_PERMISSIONS)
+            new UpdateTask().execute();
     }
 
     public void startActivity() {
-        Intent intent = new Intent(Welcome.this, Main.class);
+        Intent intent = new Intent(getIntent());
+        intent.setClass(Welcome.this, Main.class);
         if (isVersionChanged) {
             intent.putExtra("isVersionChanged", isVersionChanged);
             intent.putExtra("newVersionName", mVersionName);
             intent.putExtra("oldVersionName", mOldVersionName);
         }
         startActivity(intent);
-        //overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out                                                                                                                 );
         finish();
 
     }
@@ -163,7 +190,6 @@ public class Welcome extends Activity {
     private class UpdateTask extends AsyncTask<String, String, String> {
         @Override
         protected String doInBackground(String[] p1) {
-            // TODO: Implement this method
             onUpdate(mLastTime, mOldLastTime);
             return null;
         }
@@ -192,21 +218,83 @@ public class Welcome extends Activity {
             }
 
             try {
-                //LuaUtil.rmDir(new File(localDir),".lua");
-                //LuaUtil.rmDir(new File(luaMdDir),".lua");
-
-
+                // Prefer the APK's compressed asset entries, matching the original layout.
                 unApk("assets", localDir);
+            } catch (Exception e) {
+                // Some modern APK/ROM combinations expose assets more reliably through AssetManager.
+                e.printStackTrace();
+                try {
+                    copyAssetTree("", new File(localDir));
+                } catch (IOException copyError) {
+                    copyError.printStackTrace();
+                }
+            }
+
+            // Never continue with a half-initialized runtime: main.lua is required by Main.
+            if (!new File(localDir, "main.lua").isFile()) {
+                try {
+                    copyAssetTree("", new File(localDir));
+                } catch (IOException e) {
+                    sendMsg(e.getMessage());
+                }
+            }
+
+            try {
                 unApk("lua", luaMdDir);
-                //unZipAssets("main.alp", extDir);
-            } catch (IOException e) {
-                sendMsg(e.getMessage());
+            } catch (Exception e) {
+                e.printStackTrace();
+                try {
+                    copyAssetTree("lua", new File(luaMdDir));
+                } catch (IOException ignored) {
+                    // The lua directory is optional for installations without separately packaged modules.
+                }
             }
         }
 
         private void sendMsg(String message) {
             // TODO: Implement this method
 
+        }
+
+        private void copyAssetTree(String assetPath, File outputDirectory) throws IOException {
+            if (!outputDirectory.exists() && !outputDirectory.mkdirs())
+                throw new IOException("Cannot create " + outputDirectory);
+
+            String[] children = getAssets().list(assetPath);
+            if (children == null)
+                return;
+
+            for (String child : children) {
+                String childAssetPath = assetPath.length() == 0 ? child : assetPath + "/" + child;
+                File output = new File(outputDirectory, child);
+                String[] nested = getAssets().list(childAssetPath);
+                if (nested != null && nested.length > 0) {
+                    copyAssetTree(childAssetPath, output);
+                } else {
+                    copyAssetFile(childAssetPath, output);
+                }
+            }
+        }
+
+        private void copyAssetFile(String assetPath, File output) throws IOException {
+            File parent = output.getParentFile();
+            if (parent != null && !parent.exists() && !parent.mkdirs())
+                throw new IOException("Cannot create " + parent);
+
+            InputStream in = getAssets().open(assetPath);
+            FileOutputStream out = new FileOutputStream(output);
+            byte[] buffer = new byte[8192];
+            int count;
+            try {
+                while ((count = in.read(buffer)) != -1)
+                    out.write(buffer, 0, count);
+            } finally {
+                try {
+                    out.close();
+                } finally {
+                    in.close();
+                }
+            }
         }
 
         private void unApk(String dir, String extDir) throws IOException {
